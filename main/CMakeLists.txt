@@ -1,11 +1,11 @@
 set(COMPONENT_SRCS
     TinyPngOut.c
-    bluart_e-puck2.c
+    # bluart_e-puck2.c
     button_e-puck2.c
     http_server.c
     json.c
     main_e-puck2.c
-    rfcomm_e-puck2.c
+    # rfcomm_e-puck2.c
     rgb_led_e-puck2.c
     socket_e-puck2.c
     spi_e-puck2.c
@@ -20,14 +20,20 @@ SRCS
 INCLUDE_DIRS 
     "html"
 REQUIRES 
-    driver
-    efuse
-    esp_timer
-    lwip
-    vfs
-    esp_wifi
-    esp_event
-    esp_netif
-    esp_eth
-    esp_phy
+efuse
+esp_timer
+lwip
+vfs
+esp_wifi
+esp_event
+esp_netif
+esp_eth
+esp_phy
+nvs_flash
+bt
+driver
+esp_driver_uart
+esp_driver_gpio
+esp_driver_ledc
+esp_driver_spi
 )
