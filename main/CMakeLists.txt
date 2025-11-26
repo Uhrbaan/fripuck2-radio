@@ -1,0 +1,33 @@
+set(COMPONENT_SRCS
+    TinyPngOut.c
+    bluart_e-puck2.c
+    button_e-puck2.c
+    http_server.c
+    json.c
+    main_e-puck2.c
+    rfcomm_e-puck2.c
+    rgb_led_e-puck2.c
+    socket_e-puck2.c
+    spi_e-puck2.c
+    uart_e-puck2.c
+    utility.c
+    wifi_manager.c
+)
+
+idf_component_register(
+SRCS 
+    ${COMPONENT_SRCS}
+INCLUDE_DIRS 
+    "html"
+REQUIRES 
+    driver
+    efuse
+    esp_timer
+    lwip
+    vfs
+    esp_wifi
+    esp_event
+    esp_netif
+    esp_eth
+    esp_phy
+)
