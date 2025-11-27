@@ -1,6 +1,6 @@
 # Fripuck2 radio firmware 
 This project contains the firmware necessary to flash the esp32 on the epuck2 made by GCtronic.
-In the fripuck2 project, this (secondary) processor is responsible for all the radio communication, especially Wi-Fi whic the university of Fribourg uses.
+In the fripuck2 project, this (secondary) processor is responsible for all the radio communication, especially Wi-Fi which the university of Fribourg uses.
 The other connectivity methods like bluetooth are unsupported.
 This code is *technically* a fork of the GCtronic's repository at <https://github.com/e-puck2/esp-idf/tree/wifi>, but doesn't include the entire esp-idf system with it for the sake of simplicity. 
 Most of the code has been originally written by GCtronic. 
