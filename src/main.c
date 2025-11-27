@@ -10,6 +10,8 @@ static const char *TAG = "APP_MAIN";
 
 // The entry point for all ESP-IDF applications
 void app_main(void) {
+    ESP_ERROR_CHECK(nvs_flash_init());
+
     ESP_LOGI(TAG, "===================================");
     ESP_LOGI(TAG, "Test Application Started Successfully!");
     ESP_LOGI(TAG, "Chip model: %s",
