@@ -1,5 +1,5 @@
 #include "wifi.h"
-#include "secrets.h"
+#include "network_config.h"
 
 #include "esp_event.h"
 #include "esp_log.h"
@@ -13,7 +13,7 @@
 #define WIFI_FAIL_BIT BIT1
 
 /// @brief
-static EventGroupHandle_t s_wifi_event_group;
+static EventGroupHandle_t wifi_event_group;
 
 static const char TAG[] = "WIFI";
 static int retries = 0;
@@ -30,7 +30,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
             esp_wifi_connect();
         } else {
             ESP_LOGE(TAG, "Failed to connect to wifi after 10 retries.");
-            xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
+            xEventGroupSetBits(wifi_event_group, WIFI_FAIL_BIT);
         }
         retries++;
         break;
@@ -50,7 +50,7 @@ static void ip_event_handler(void *arg, esp_event_base_t event_base, int32_t eve
         ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
         ESP_LOGI(TAG, "Got ip address: " IPSTR, IP2STR(&event->ip_info.ip));
         retries = 0;
-        xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+        xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
         break;
 
     case IP_EVENT_STA_LOST_IP:
@@ -72,7 +72,7 @@ static void ip_event_handler(void *arg, esp_event_base_t event_base, int32_t eve
  *
  */
 void wifi_init(void) {
-    s_wifi_event_group = xEventGroupCreate();
+    wifi_event_group = xEventGroupCreate();
 
     // Initialize
     ESP_ERROR_CHECK(esp_netif_init());
@@ -102,7 +102,7 @@ void wifi_init(void) {
 
     // Wait for connection before continuing
     EventBits_t bits =
-        xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT, pdFALSE, pdFALSE, portMAX_DELAY);
+        xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT, pdFALSE, pdFALSE, portMAX_DELAY);
 
     if (bits & WIFI_CONNECTED_BIT) {
         ESP_LOGI(TAG, "Successfully connected to: %", wifi_ssid);
