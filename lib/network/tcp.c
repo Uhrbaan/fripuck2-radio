@@ -1,9 +1,41 @@
+#include "tcp.h"
 #include "network_config.h"
 
 #include "esp_log.h"
+#include <freertos/queue.h>
 #include <sys/socket.h>
 
 static const char TAG[] = "TCP";
+QueueHandle_t request_queue;
+
+void net_requests_receiver(int socket) {
+    int length;
+    int offset = 0;
+    request_queue_item item;
+
+    // initialize the queue with 5 elements
+    request_queue = xQueueCreate(5, sizeof(item));
+
+    do {
+        length = recv(socket, &item.buffer[offset], sizeof(item), 0);
+        offset += length;
+        if (length < 0) {
+            ESP_LOGE(TAG, "Error occured during `recv`: errno %d", errno);
+            offset = 0;
+            continue;
+        } else if (length == 0) {
+            ESP_LOGE(TAG, "Connection lost.");
+            offset = 0;
+            continue;
+        } else if (length < 512) { // If less than 512, then nothing more comming: we can send the data to
+            item.size = offset;
+            offset = 0;
+            xQueueSendToBack(request_queue, &item, portMAX_DELAY); // wait if full
+        }
+    } while (length > 0);
+}
+
+void net_response_sender() {}
 
 static void tcp_client_handler(const int sock) {
     int len;
