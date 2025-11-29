@@ -1,3 +1,4 @@
+#include "spi.h"
 #include "tcp.h"
 #include "wifi.h"
 
@@ -15,12 +16,11 @@ static const char *TAG = "MAIN";
 // The entry point for all ESP-IDF applications
 void app_main(void) {
     ESP_ERROR_CHECK(nvs_flash_init());
+    ESP_ERROR_CHECK(wifi_init());
+    ESP_ERROR_CHECK(spi_init());
 
-    // Function blocking until connected or failed.
-    wifi_init();
-
-    // Start the TCP server
     xTaskCreate(tcp_server, "tcp_server", 4096, (void *)AF_INET, 5, NULL);
+    xTaskCreate(spi_request_sender, "spi_request_sender", 4096, NULL, 5, NULL);
 
     // Simple loop to prove the main task is running and FreeRTOS is operational
     int count = 0;

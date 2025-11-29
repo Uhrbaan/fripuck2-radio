@@ -71,7 +71,7 @@ static void ip_event_handler(void *arg, esp_event_base_t event_base, int32_t eve
  * <https://github.com/espressif/esp-idf/blob/master/examples/wifi/getting_started/station/main/station_example_main.c>
  *
  */
-void wifi_init(void) {
+esp_err_t wifi_init(void) {
     wifi_event_group = xEventGroupCreate();
 
     // Initialize
@@ -108,7 +108,10 @@ void wifi_init(void) {
         ESP_LOGI(TAG, "Successfully connected to: %", wifi_ssid);
     } else if (bits & WIFI_FAIL_BIT) {
         ESP_LOGI(TAG, "Failed to connect to: %s", wifi_ssid);
+        return ESP_FAIL;
     } else {
         ESP_LOGE(TAG, "Connection to wifi neither failed nor succeded. This should not happen.");
+        return ESP_FAIL;
     }
+    return ESP_OK;
 }

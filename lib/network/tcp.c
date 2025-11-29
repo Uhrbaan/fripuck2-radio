@@ -2,13 +2,13 @@
 #include "network_config.h"
 
 #include "esp_log.h"
+#include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <sys/socket.h>
 
-static const char TAG[] = "TCP";
-QueueHandle_t request_queue;
+QueueHandle_t request_queue; ///< Holds data sent from a remote client.
 
-void net_requests_receiver(int socket) {
+void net_requests_receiver(const int socket) {
     int length;
     int offset = 0;
     request_queue_item item;
@@ -20,11 +20,11 @@ void net_requests_receiver(int socket) {
         length = recv(socket, &item.buffer[offset], sizeof(item), 0);
         offset += length;
         if (length < 0) {
-            ESP_LOGE(TAG, "Error occured during `recv`: errno %d", errno);
+            ESP_LOGE("net_requests_receiver", "Error occured during `recv`: errno %d", errno);
             offset = 0;
             continue;
         } else if (length == 0) {
-            ESP_LOGE(TAG, "Connection lost.");
+            ESP_LOGE("net_requests_receiver", "Connection lost.");
             offset = 0;
             continue;
         } else if (length < 512) { // If less than 512, then nothing more comming: we can send the data to
@@ -35,8 +35,6 @@ void net_requests_receiver(int socket) {
     } while (length > 0);
 }
 
-void net_response_sender() {}
-
 static void tcp_client_handler(const int sock) {
     int len;
     char rx_buffer[128];
@@ -45,20 +43,20 @@ static void tcp_client_handler(const int sock) {
         len = recv(sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
 
         if (len < 0) {
-            ESP_LOGE(TAG, "Error occurred during recv: errno %d", errno);
+            ESP_LOGE("tcp_client_handler", "Error occurred during recv: errno %d", errno);
         } else if (len == 0) {
-            ESP_LOGI(TAG, "Connection closed by client");
+            ESP_LOGI("tcp_client_handler", "Connection closed by client");
         } else {
             rx_buffer[len] = 0; // Null-terminate whatever is received and print it
-            ESP_LOGI(TAG, "Received %d bytes: %s", len, rx_buffer);
+            ESP_LOGI("tcp_client_handler", "Received %d bytes: %s", len, rx_buffer);
 
             // Send the same data back (ECHO)
             int written = send(sock, rx_buffer, len, 0);
 
             if (written < 0) {
-                ESP_LOGE(TAG, "Error occurred during send: errno %d", errno);
+                ESP_LOGE("tcp_client_handler", "Error occurred during send: errno %d", errno);
             } else {
-                ESP_LOGI(TAG, "Sent %d bytes back.", written);
+                ESP_LOGI("tcp_client_handler", "Sent %d bytes back.", written);
             }
         }
     } while (len > 0);
@@ -85,7 +83,7 @@ void tcp_server(void *pvParameters) {
     struct sockaddr_storage dest_addr;
 
     if (addr_family != AF_INET) {
-        ESP_LOGE(TAG, "Currently, only IPv4 is supported.");
+        ESP_LOGE("tcp_server", "Currently, only IPv4 is supported.");
         return;
     }
 
@@ -98,27 +96,27 @@ void tcp_server(void *pvParameters) {
     // Create listening socket
     int listen_sock = socket(addr_family, SOCK_STREAM, ip_protocol);
     if (listen_sock < 0) {
-        ESP_LOGE(TAG, "Unable to create socket: errno %d", errno);
+        ESP_LOGE("tcp_server", "Unable to create socket: errno %d", errno);
         vTaskDelete(NULL);
         return;
     }
     int opt = 1;
     setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
-    ESP_LOGI(TAG, "Created tcp socket.");
+    ESP_LOGI("tcp_server", "Created tcp socket.");
 
     int err = bind(listen_sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
     if (err != 0) {
-        ESP_LOGE(TAG, "Socket unable to bind: errno %d", errno);
-        ESP_LOGE(TAG, "IPPROTO: %d", addr_family);
+        ESP_LOGE("tcp_server", "Socket unable to bind: errno %d", errno);
+        ESP_LOGE("tcp_server", "IPPROTO: %d", addr_family);
         close(listen_sock);
         vTaskDelete(NULL);
     }
-    ESP_LOGI(TAG, "Socket bound on port %d", tcp_port);
+    ESP_LOGI("tcp_server", "Socket bound on port %d", tcp_port);
 
     err = listen(listen_sock, 1);
     if (err != 0) {
-        ESP_LOGE(TAG, "Error occurred during listen: errno %d", errno);
+        ESP_LOGE("tcp_server", "Error occurred during listen: errno %d", errno);
         close(listen_sock);
         vTaskDelete(NULL);
     }
@@ -128,7 +126,7 @@ void tcp_server(void *pvParameters) {
         socklen_t addr_len = sizeof(source_addr);
         int sock = accept(listen_sock, (struct sockaddr *)&source_addr, &addr_len);
         if (sock < 0) {
-            ESP_LOGE(TAG, "Unable to accept connection: errno %d", errno);
+            ESP_LOGE("tcp_server", "Unable to accept connection: errno %d", errno);
             break;
         }
 
@@ -136,10 +134,10 @@ void tcp_server(void *pvParameters) {
             inet_ntoa_r(((struct sockaddr_in *)&source_addr)->sin_addr, addr_str, sizeof(addr_str) - 1);
         }
 
-        ESP_LOGI(TAG, "Socket accepted ip address: %s", addr_str);
+        ESP_LOGI("tcp_server", "Socket accepted ip address: %s", addr_str);
 
         // Main loop
-        tcp_client_handler(sock);
+        net_requests_receiver(sock);
 
         shutdown(sock, 0);
         close(sock);
