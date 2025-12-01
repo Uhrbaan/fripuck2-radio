@@ -83,7 +83,7 @@ void spi_request_sender(void *pvParameters) {
     };
 
     while (1) {
-        if (xQueueReceive(request_queue, &item, portMAX_DELAY) != pdPASS) {
+        if (xQueueReceive(request_queue, &item, portMAX_DELAY) != pdTRUE) {
             continue;
         }
 

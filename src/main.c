@@ -10,20 +10,17 @@
 #include <stdio.h>
 #include <sys/socket.h>
 
-// Define a tag for logging purposes
 static const char *TAG = "MAIN";
 
-// The entry point for all ESP-IDF applications
 void app_main(void) {
     ESP_ERROR_CHECK(nvs_flash_init());
-    int err = wifi_init();
-    ESP_LOGI("APP MAIN", "Got error: %s", esp_err_to_name(err));
+    ESP_ERROR_CHECK(wifi_init());
     ESP_ERROR_CHECK(spi_init());
+    ESP_ERROR_CHECK(tcp_init_());
 
     xTaskCreate(tcp_server, "tcp_server", 4096, (void *)AF_INET, 5, NULL);
     xTaskCreate(spi_request_sender, "spi_request_sender", 4096, NULL, 5, NULL);
 
-    // Simple loop to prove the main task is running and FreeRTOS is operational
     int count = 0;
     while (1) {
         // Log a message every 5 seconds

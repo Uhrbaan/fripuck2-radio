@@ -8,14 +8,18 @@
 
 QueueHandle_t request_queue; ///< Holds data sent from a remote client.
 
-void net_requests_receiver(const int socket) {
+int tcp_init_(void) {
+    // initialize the queue with 5 elements
+    request_queue = xQueueCreate(5, sizeof(request_queue_item));
+    return ESP_OK;
+}
+
+static void net_requests_receiver(const int socket) {
     int length;
     int offset = 0;
     request_queue_item item;
 
-    // initialize the queue with 5 elements
-    request_queue = xQueueCreate(5, sizeof(item));
-
+    ESP_LOGI("NET REQUEST RECEIVER", "Starting net_requests_receiver.");
     do {
         length = recv(socket, &item.buffer[offset], sizeof(item), 0);
         offset += length;
@@ -31,6 +35,8 @@ void net_requests_receiver(const int socket) {
             item.size = offset;
             offset = 0;
             xQueueSendToBack(request_queue, &item, portMAX_DELAY); // wait if full
+            ESP_LOGI("NET REQUEST RECEIVER", "Send data %.500s of length %d.\nThe queue is currently %d items long.",
+                     item.buffer, item.size, uxQueueMessagesWaiting(request_queue));
         }
     } while (length > 0);
 }
