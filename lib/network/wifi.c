@@ -22,11 +22,18 @@ static int max_retries = 10;
 static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data) {
     switch (event_id) {
     case WIFI_EVENT_STA_START:
+        ESP_LOGI("WIFI HANDLER", "Successfully connected to wifi.");
         esp_wifi_connect();
         break;
 
     case WIFI_EVENT_STA_DISCONNECTED:
         if (retries < max_retries) {
+            wifi_event_sta_disconnected_t *event = (wifi_event_sta_disconnected_t *)event_data;
+            // refer to
+            // <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-guides/wifi.html#esp-wifi-reason-code>
+            // for wifi reasono codes.
+            ESP_LOGI("WIFI HANDLER", "Failed to connect to wifi %s because of reason %d. Retry n°%d.", event->ssid,
+                     event->reason, retries);
             esp_wifi_connect();
         } else {
             ESP_LOGE(TAG, "Failed to connect to wifi after 10 retries.");
@@ -82,6 +89,7 @@ esp_err_t wifi_init(void) {
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    ESP_LOGI("WIFI INIT", "Initialized netif, event loop and wifi_init.");
 
     // Configure
     esp_event_handler_instance_t instance_any_id;
@@ -94,11 +102,12 @@ esp_err_t wifi_init(void) {
     wifi_config_t wifi_config = {0};
     strcpy((char *)wifi_config.sta.ssid, wifi_ssid);
     strcpy((char *)wifi_config.sta.password, wifi_password);
-    wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_WPA3_PSK;
+    wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start());
+    ESP_LOGI("WIFI INIT", "Started wifi.");
 
     // Wait for connection before continuing
     EventBits_t bits =

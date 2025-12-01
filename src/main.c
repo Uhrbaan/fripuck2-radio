@@ -16,7 +16,8 @@ static const char *TAG = "MAIN";
 // The entry point for all ESP-IDF applications
 void app_main(void) {
     ESP_ERROR_CHECK(nvs_flash_init());
-    ESP_ERROR_CHECK(wifi_init());
+    int err = wifi_init();
+    ESP_LOGI("APP MAIN", "Got error: %s", esp_err_to_name(err));
     ESP_ERROR_CHECK(spi_init());
 
     xTaskCreate(tcp_server, "tcp_server", 4096, (void *)AF_INET, 5, NULL);
