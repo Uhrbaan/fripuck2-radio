@@ -6,13 +6,7 @@
 #include <freertos/queue.h>
 #include <sys/socket.h>
 
-QueueHandle_t request_queue; ///< Holds data sent from a remote client.
-
-int tcp_init_(void) {
-    // initialize the queue with 5 elements
-    request_queue = xQueueCreate(5, sizeof(request_queue_item));
-    return ESP_OK;
-}
+extern QueueHandle_t uart_request_queue; ///< Holds data sent from a remote client.
 
 static void net_requests_receiver(const int socket) {
     int length;
@@ -24,19 +18,19 @@ static void net_requests_receiver(const int socket) {
         length = recv(socket, &item.buffer[offset], sizeof(item), 0);
         offset += length;
         if (length < 0) {
-            ESP_LOGE("net_requests_receiver", "Error occured during `recv`: errno %d", errno);
+            ESP_LOGE("NET REQUEST RECEIVER", "Error occured during `recv`: errno %d", errno);
             offset = 0;
             continue;
         } else if (length == 0) {
-            ESP_LOGE("net_requests_receiver", "Connection lost.");
+            ESP_LOGE("NET REQUEST RECEIVER", "Connection lost.");
             offset = 0;
             continue;
         } else if (length < 512) { // If less than 512, then nothing more comming: we can send the data to
             item.size = offset;
             offset = 0;
-            xQueueSendToBack(request_queue, &item, portMAX_DELAY); // wait if full
+            xQueueSendToBack(uart_request_queue, &item, portMAX_DELAY); // wait if full
             ESP_LOGI("NET REQUEST RECEIVER", "Send data %.500s of length %d.\nThe queue is currently %d items long.",
-                     item.buffer, item.size, uxQueueMessagesWaiting(request_queue));
+                     item.buffer, item.size, uxQueueMessagesWaiting(uart_request_queue));
         }
     } while (length > 0);
 }
@@ -82,6 +76,7 @@ static void tcp_client_handler(const int sock) {
  */
 void tcp_server(void *pvParameters) {
     // Initialization
+    // TODO: move initialization to a tcp_init function.
     char addr_str[128];
     int addr_family = (int)pvParameters;
     int ip_protocol = 0;

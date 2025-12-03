@@ -10,6 +10,6 @@ typedef struct request_queue_item {
 } request_queue_item;
 
 void tcp_server(void *pvParameters);
-int tcp_init_(void);
+// int tcp_init_(void);
 
 #endif

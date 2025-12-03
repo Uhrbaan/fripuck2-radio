@@ -22,7 +22,7 @@ static const char TAG[] = "SPI";
 static uint8_t *spi_transmit_buffer;
 static uint8_t *spi_receive_buffer;
 
-extern QueueHandle_t request_queue; ///< Holds data sent from a remote client.
+QueueHandle_t spi_request_queue; ///< Holds data sent from a remote client.
 EventGroupHandle_t spi_event_group;
 
 static spi_bus_config_t spi_bus_config = {.miso_io_num = PIN_NUM_MISO,
@@ -56,6 +56,7 @@ esp_err_t spi_init(void) {
     memset(spi_receive_buffer, 0, SPI_PACKET_MAX_SIZE);
 
     spi_event_group = xEventGroupCreate();
+    spi_request_queue = xQueueCreate(5, sizeof(request_queue_item));
 
     // Enable pull-ups on SPI lines so we don't detect rogue pulses when no master is connected.
     gpio_set_pull_mode(PIN_NUM_MOSI, GPIO_PULLUP_ONLY);
@@ -72,7 +73,7 @@ esp_err_t spi_init(void) {
  * Note that this function is blocking.
  *
  */
-void spi_request_sender(void *pvParameters) {
+void spi_transmitter(void *pvParameters) {
     request_queue_item item;
     esp_err_t err;
 
@@ -83,7 +84,7 @@ void spi_request_sender(void *pvParameters) {
     };
 
     while (1) {
-        if (xQueueReceive(request_queue, &item, portMAX_DELAY) != pdTRUE) {
+        if (xQueueReceive(spi_request_queue, &item, portMAX_DELAY) != pdTRUE) {
             continue;
         }
 
@@ -103,4 +104,4 @@ void spi_request_sender(void *pvParameters) {
     }
 }
 
-void spi_response_receiver(void *pvParameters) {}
+void spi_receiver(void *pvParameters) {}
