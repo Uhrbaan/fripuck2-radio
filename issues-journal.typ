@@ -21,3 +21,15 @@ Using toolchain-xtensa-esp32s3@12.2.0+20230208 package
 0x4008c1e1: xQueueReceive at /home/luclement/.platformio/packages/framework-espidf/components/freertos/FreeRTOS-Kernel/queue.c:1535 (discriminator 2)
 0x400d23b7: spi_request_sender at /home/luclement/Projets/fripuck2-radio/lib/serial/spi.c:86
 ```
+
+== 2025.12.03
+So, I changed so that the tcp packets go over UART. Now, sending packets work.
+
+You can try an asercom command. The following commands:
+```sh
+printf "%b" '\xb4\x09\x01' | nc 192.168.2.147 1000
+printf "%b" '\xb4\x09\x00' | nc 192.168.2.147 1000
+```
+
+Respectively enable and disable the front LED.
+Note That you need to replace the IP address with the correct one.

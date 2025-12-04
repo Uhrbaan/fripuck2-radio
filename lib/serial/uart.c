@@ -19,6 +19,8 @@
 QueueHandle_t uart_request_queue; ///< Holds data sent from a remote client.
 EventGroupHandle_t uart_event_group;
 
+extern QueueHandle_t tcp_transmit_queue;
+
 #define UART_BUFFER_SIZE 2048
 uint8_t *uart_transmit_buffer = NULL;
 uint8_t *uart_receive_buffer = NULL;
@@ -72,4 +74,16 @@ void uart_transmitter(void *pvParameters) {
     }
 }
 
-void uart_receiver(void) {}
+void uart_receiver(void) {
+    request_queue_item item;
+
+    while (1) {
+        size_t size = uart_read_bytes(UART_407, item.buffer, 512, pdMS_TO_TICKS(50));
+
+        if (size > 0) {
+            item.size = size;
+            xQueueSendToBack(tcp_transmit_queue, &item, portMAX_DELAY);
+            ESP_LOGI("UART RECEIVER", "Sent %zu bytes to the TCP queue");
+        }
+    }
+}

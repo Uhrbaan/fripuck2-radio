@@ -6,106 +6,87 @@
 #include <freertos/queue.h>
 #include <sys/socket.h>
 
-#define RECEIVE_EVENT_BIT (1UL << 0UL)  // Socket has received data (or is ready to receive)
-#define TRANSMIT_EVENT_BIT (1UL << 1UL) // Outgoing queue has new data to send
-#define DISCONNECT_BIT (1UL << 2UL)     // Socket has disconnected (optional but recommended)
-
 QueueHandle_t tcp_transmit_queue;
 extern QueueHandle_t uart_request_queue; ///< Holds data sent from a remote client.
 
 EventGroupHandle_t tcp_event_group;
 
-void tcp_handler(const int socket) {
-    request_queue_item item;
-    fd_set read_fd;
-
-    while (1) {
-        FD_ZERO(&read_fd);
-        FD_SET(socket, &read_fd);
-
-        if (select(socket + 1, &read_fd, NULL, NULL, NULL) < 0) {
-            ESP_LOGE("TCP HANDLER", "Failed to create select.");
-            exit(EXIT_FAILURE);
-        }
-
-        if (FD_ISSET(socket, &read_fd)) {
-            int bytes = recv(socket, item.buffer, sizeof(item.buffer), 0);
-            item.size = bytes;
-            xQueueSendToBack(uart_request_queue, &item, portMAX_DELAY);
-            ESP_LOGI("TCP HANDLER", "Receieved and queued %zu bytes.", bytes);
-        }
-
-        if (xQueueReceive(uart_request_queue, &item, 0) == pdTRUE) {
-            int bytes = send(socket, item.buffer, sizeof(item.buffer), 0);
-            ESP_LOGI("TCP HANDLER", "Dequeued and sent %zu bytes.", bytes);
-        }
-    }
-}
-
-static void net_requests_receiver(const int socket) {
+void tcp_receiver(void *pvParameters) {
+    const int socket = (int)pvParameters;
     int length;
     int offset = 0;
     request_queue_item item;
 
-    ESP_LOGI("NET REQUEST RECEIVER", "Starting net_requests_receiver.");
+    ESP_LOGI("TCP RECEIVER", "Starting tcp_transmitter.");
     do {
         length = recv(socket, &item.buffer[offset], sizeof(item), 0);
         offset += length;
         if (length < 0) {
-            ESP_LOGE("NET REQUEST RECEIVER", "Error occured during `recv`: errno %d", errno);
-            offset = 0;
-            continue;
+            ESP_LOGE("TCP RECEIVER", "Error occured during `recv`: errno %d", errno);
+            break;
         } else if (length == 0) {
-            ESP_LOGE("NET REQUEST RECEIVER", "Connection lost.");
-            offset = 0;
-            continue;
-        } else if (length < 512) { // If less than 512, then nothing more comming: we can send the data to
-            item.size = offset;
-            offset = 0;
-            xQueueSendToBack(uart_request_queue, &item, portMAX_DELAY); // wait if full
-            ESP_LOGI("NET REQUEST RECEIVER", "Send data %.500s of length %d.\nThe queue is currently %d items long.",
-                     item.buffer, item.size, uxQueueMessagesWaiting(uart_request_queue));
+            ESP_LOGE("TCP RECEIVER", "Connection lost.");
+            break;
         }
-
-        if (xQueueReceive(uart_request_queue, &item, portMAX_DELAY) == pdTRUE) {
-            continue;
-        }
-
+        // else if (length < 512) { // If less than 512, then nothing more comming: we can send the data to
+        //     item.size = offset;
+        //     offset = 0;
+        //     xQueueSendToBack(uart_request_queue, &item, portMAX_DELAY); // wait if full
+        //     ESP_LOGI("TCP RECEIVE", "Send data %.500s of length %d.\nThe queue is currently %d items long.",
+        //              item.buffer, item.size, uxQueueMessagesWaiting(uart_request_queue));
+        // }
+        item.size = length;
+        xQueueSendToBack(uart_request_queue, &item, portMAX_DELAY);
+        ESP_LOGI("TCP RECEIVER", "Received %zu bytes over tcp.", length);
     } while (length > 0);
+
+    ESP_LOGI("TCP RECEIVER", "Closing the thread.");
+    shutdown(socket, 0);
+    close(socket);
+
+    // Stop both tasks since socket can't be used and must be reused.
+    vTaskDelete(xTaskGetHandle("tcp_receiver"));
+    vTaskDelete(xTaskGetHandle("tcp_transmitter"));
 }
 
-static void tcp_client_handler(const int sock) {
-    int len;
-    char rx_buffer[128];
+void tcp_transmitter(void *pvParameters) {
+    const int socket = (int)pvParameters;
+    request_queue_item item;
 
-    do {
-        len = recv(sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
-
-        if (len < 0) {
-            ESP_LOGE("tcp_client_handler", "Error occurred during recv: errno %d", errno);
-        } else if (len == 0) {
-            ESP_LOGI("tcp_client_handler", "Connection closed by client");
-        } else {
-            rx_buffer[len] = 0; // Null-terminate whatever is received and print it
-            ESP_LOGI("tcp_client_handler", "Received %d bytes: %s", len, rx_buffer);
-
-            // Send the same data back (ECHO)
-            int written = send(sock, rx_buffer, len, 0);
-
-            if (written < 0) {
-                ESP_LOGE("tcp_client_handler", "Error occurred during send: errno %d", errno);
-            } else {
-                ESP_LOGI("tcp_client_handler", "Sent %d bytes back.", written);
-            }
+    while (1) {
+        if (xQueueReceive(tcp_transmit_queue, &item, portMAX_DELAY) != pdTRUE) {
+            continue;
         }
-    } while (len > 0);
 
-    // Clean up the client socket after the loop (connection closed or error)
-    shutdown(sock, 0);
-    close(sock);
+        size_t bytes_to_send = item.size;
+        int bytes_sent = send(socket, item.buffer, bytes_to_send, 0);
+
+        if (bytes_sent < 0) {
+            ESP_LOGE("TCP TRANSMITTER", "Error sending data: %d", errno);
+            break;
+        } else if (bytes_sent == 0) {
+            ESP_LOGI("TCP TRANSMITTER", "Peer closed connection.");
+            break;
+        } else if ((size_t)bytes_sent < bytes_to_send) {
+            ESP_LOGW("TCP TRANSMITTER", "Partial send: sent %d of %zu bytes. Remaining data dropped.", bytes_sent,
+                     bytes_to_send);
+        } else {
+            ESP_LOGI("TCP TRANSMITTER", "Dequeued and sent %d bytes.", bytes_sent);
+        }
+
+        ESP_LOGI("TCP TRANSMITTER", "Transmitting %zu bytes from uart over TCP.", bytes_sent);
+    }
+
+    ESP_LOGI("TCP TRANSMITTER", "Shutting down task.");
+    shutdown(socket, 0);
+    close(socket);
+
+    // Stop both tasks since socket can't be used and must be reused.
+    vTaskDelete(xTaskGetHandle("tcp_receiver"));
+    vTaskDelete(xTaskGetHandle("tcp_transmitter"));
 }
 
-int tcp_init(void) {
+int tcp_init_(void) {
     tcp_transmit_queue = xQueueCreate(5, sizeof(request_queue_item));
     return ESP_OK;
 }
@@ -141,27 +122,27 @@ void tcp_server(void *pvParameters) {
     // Create listening socket
     int listen_sock = socket(addr_family, SOCK_STREAM, ip_protocol);
     if (listen_sock < 0) {
-        ESP_LOGE("tcp_server", "Unable to create socket: errno %d", errno);
+        ESP_LOGE("TCP SERVER", "Unable to create socket: errno %d", errno);
         vTaskDelete(NULL);
         return;
     }
     int opt = 1;
     setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
-    ESP_LOGI("tcp_server", "Created tcp socket.");
+    ESP_LOGI("TCP SERVER", "Created tcp socket.");
 
     int err = bind(listen_sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
     if (err != 0) {
-        ESP_LOGE("tcp_server", "Socket unable to bind: errno %d", errno);
-        ESP_LOGE("tcp_server", "IPPROTO: %d", addr_family);
+        ESP_LOGE("TCP SERVER", "Socket unable to bind: errno %d", errno);
+        ESP_LOGE("TCP SERVER", "IPPROTO: %d", addr_family);
         close(listen_sock);
         vTaskDelete(NULL);
     }
-    ESP_LOGI("tcp_server", "Socket bound on port %d", tcp_port);
+    ESP_LOGI("TCP SERVER", "Socket bound on port %d", tcp_port);
 
     err = listen(listen_sock, 1);
     if (err != 0) {
-        ESP_LOGE("tcp_server", "Error occurred during listen: errno %d", errno);
+        ESP_LOGE("TCP SERVER", "Error occurred during listen: errno %d", errno);
         close(listen_sock);
         vTaskDelete(NULL);
     }
@@ -171,7 +152,7 @@ void tcp_server(void *pvParameters) {
         socklen_t addr_len = sizeof(source_addr);
         int sock = accept(listen_sock, (struct sockaddr *)&source_addr, &addr_len);
         if (sock < 0) {
-            ESP_LOGE("tcp_server", "Unable to accept connection: errno %d", errno);
+            ESP_LOGE("TCP SERVER", "Unable to accept connection: errno %d", errno);
             break;
         }
 
@@ -179,13 +160,11 @@ void tcp_server(void *pvParameters) {
             inet_ntoa_r(((struct sockaddr_in *)&source_addr)->sin_addr, addr_str, sizeof(addr_str) - 1);
         }
 
-        ESP_LOGI("tcp_server", "Socket accepted ip address: %s", addr_str);
+        ESP_LOGI("TCP SERVER", "Socket accepted ip address: %s", addr_str);
 
         // Main loop
-        net_requests_receiver(sock);
-
-        shutdown(sock, 0);
-        close(sock);
+        xTaskCreate(tcp_receiver, "tcp_receiver", 4096, (void *)sock, 5, NULL);
+        xTaskCreate(tcp_transmitter, "tcp_transmitter", 4096, (void *)sock, 5, NULL);
     }
 
     close(listen_sock);

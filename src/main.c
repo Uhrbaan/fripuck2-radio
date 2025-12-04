@@ -11,13 +11,11 @@
 #include <stdio.h>
 #include <sys/socket.h>
 
-static const char *TAG = "MAIN";
-
 void app_main(void) {
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(wifi_init());
     ESP_ERROR_CHECK(spi_init());
-    // ESP_ERROR_CHECK(tcp_init_());
+    ESP_ERROR_CHECK(tcp_init_());
     ESP_ERROR_CHECK(uart_init());
 
     xTaskCreate(tcp_server, "tcp_server", 4096, (void *)AF_INET, 5, NULL);
