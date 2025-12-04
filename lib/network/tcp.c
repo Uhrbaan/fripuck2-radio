@@ -6,7 +6,41 @@
 #include <freertos/queue.h>
 #include <sys/socket.h>
 
+#define RECEIVE_EVENT_BIT (1UL << 0UL)  // Socket has received data (or is ready to receive)
+#define TRANSMIT_EVENT_BIT (1UL << 1UL) // Outgoing queue has new data to send
+#define DISCONNECT_BIT (1UL << 2UL)     // Socket has disconnected (optional but recommended)
+
+QueueHandle_t tcp_transmit_queue;
 extern QueueHandle_t uart_request_queue; ///< Holds data sent from a remote client.
+
+EventGroupHandle_t tcp_event_group;
+
+void tcp_handler(const int socket) {
+    request_queue_item item;
+    fd_set read_fd;
+
+    while (1) {
+        FD_ZERO(&read_fd);
+        FD_SET(socket, &read_fd);
+
+        if (select(socket + 1, &read_fd, NULL, NULL, NULL) < 0) {
+            ESP_LOGE("TCP HANDLER", "Failed to create select.");
+            exit(EXIT_FAILURE);
+        }
+
+        if (FD_ISSET(socket, &read_fd)) {
+            int bytes = recv(socket, item.buffer, sizeof(item.buffer), 0);
+            item.size = bytes;
+            xQueueSendToBack(uart_request_queue, &item, portMAX_DELAY);
+            ESP_LOGI("TCP HANDLER", "Receieved and queued %zu bytes.", bytes);
+        }
+
+        if (xQueueReceive(uart_request_queue, &item, 0) == pdTRUE) {
+            int bytes = send(socket, item.buffer, sizeof(item.buffer), 0);
+            ESP_LOGI("TCP HANDLER", "Dequeued and sent %zu bytes.", bytes);
+        }
+    }
+}
 
 static void net_requests_receiver(const int socket) {
     int length;
@@ -32,6 +66,11 @@ static void net_requests_receiver(const int socket) {
             ESP_LOGI("NET REQUEST RECEIVER", "Send data %.500s of length %d.\nThe queue is currently %d items long.",
                      item.buffer, item.size, uxQueueMessagesWaiting(uart_request_queue));
         }
+
+        if (xQueueReceive(uart_request_queue, &item, portMAX_DELAY) == pdTRUE) {
+            continue;
+        }
+
     } while (length > 0);
 }
 
@@ -64,6 +103,11 @@ static void tcp_client_handler(const int sock) {
     // Clean up the client socket after the loop (connection closed or error)
     shutdown(sock, 0);
     close(sock);
+}
+
+int tcp_init(void) {
+    tcp_transmit_queue = xQueueCreate(5, sizeof(request_queue_item));
+    return ESP_OK;
 }
 
 /**
