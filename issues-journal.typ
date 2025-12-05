@@ -33,3 +33,10 @@ printf "%b" '\xb4\x09\x00' | nc 192.168.2.147 1000
 
 Respectively enable and disable the front LED.
 Note That you need to replace the IP address with the correct one.
+
+== 2025.12.05
+To watch the response of the second processor, just
+```sh
+screen /dev/serial/by-id/usb-STMicroelectronics_e-puck2_STM32F407_301-if00
+```
+This is a fixed path, it wont change (it symlinks to the correct `/dev/tty` port).

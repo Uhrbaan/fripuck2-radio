@@ -21,6 +21,7 @@ void app_main(void) {
     xTaskCreate(tcp_server, "tcp_server", 4096, (void *)AF_INET, 5, NULL);
     // xTaskCreate(spi_transmitter, "spi_transmitter", 4096, NULL, 5, NULL);
     xTaskCreate(uart_transmitter, "uart_transmitter", 4096, NULL, 5, NULL);
+    xTaskCreate(uart_receiver, "uart_receiver", 4096, NULL, 5, NULL);
 
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(5000));

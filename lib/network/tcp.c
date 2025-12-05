@@ -28,16 +28,9 @@ void tcp_receiver(void *pvParameters) {
             ESP_LOGE("TCP RECEIVER", "Connection lost.");
             break;
         }
-        // else if (length < 512) { // If less than 512, then nothing more comming: we can send the data to
-        //     item.size = offset;
-        //     offset = 0;
-        //     xQueueSendToBack(uart_request_queue, &item, portMAX_DELAY); // wait if full
-        //     ESP_LOGI("TCP RECEIVE", "Send data %.500s of length %d.\nThe queue is currently %d items long.",
-        //              item.buffer, item.size, uxQueueMessagesWaiting(uart_request_queue));
-        // }
         item.size = length;
         xQueueSendToBack(uart_request_queue, &item, portMAX_DELAY);
-        ESP_LOGI("TCP RECEIVER", "Received %zu bytes over tcp.", length);
+        ESP_LOGI("TCP RECEIVER", "Received %zu bytes over tcp: %.20s...", length, item.buffer);
     } while (length > 0);
 
     ESP_LOGI("TCP RECEIVER", "Closing the thread.");
@@ -74,7 +67,7 @@ void tcp_transmitter(void *pvParameters) {
             ESP_LOGI("TCP TRANSMITTER", "Dequeued and sent %d bytes.", bytes_sent);
         }
 
-        ESP_LOGI("TCP TRANSMITTER", "Transmitting %zu bytes from uart over TCP.", bytes_sent);
+        ESP_LOGI("TCP TRANSMITTER", "Transmitting %zu bytes from uart over TCP: %.20s...", bytes_sent, item.buffer);
     }
 
     ESP_LOGI("TCP TRANSMITTER", "Shutting down task.");

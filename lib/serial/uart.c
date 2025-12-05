@@ -64,17 +64,19 @@ void uart_transmitter(void *pvParameters) {
             continue;
         }
 
-        ESP_LOGI("UART TRANSMITTER", "Got %zu bytes from queue.", item.size);
+        ESP_LOGI("UART TRANSMITTER", "uart_request_queue has %d element(s) left.",
+                 uxQueueMessagesWaiting(uart_request_queue));
+        ESP_LOGI("UART TRANSMITTER", "Got %zu bytes from queue: %.20s...", item.size, item.buffer);
         size_t size = (item.size <= UART_BUFFER_SIZE) ? item.size : UART_BUFFER_SIZE;
         memcpy(uart_transmit_buffer, item.buffer, size);
 
         size_t sent = uart_tx_chars(UART_407, (char *)&uart_transmit_buffer[0], size);
         uart_wait_tx_done(UART_407, portMAX_DELAY);
-        ESP_LOGI("UART TRANSMITTER", "Successfully sent %d bytes.", sent);
+        ESP_LOGI("UART TRANSMITTER", "Successfully sent %zu bytes: %.20s...", sent, uart_transmit_buffer);
     }
 }
 
-void uart_receiver(void) {
+void uart_receiver(void *pvParameters) {
     request_queue_item item;
 
     while (1) {
@@ -83,7 +85,7 @@ void uart_receiver(void) {
         if (size > 0) {
             item.size = size;
             xQueueSendToBack(tcp_transmit_queue, &item, portMAX_DELAY);
-            ESP_LOGI("UART RECEIVER", "Sent %zu bytes to the TCP queue");
+            ESP_LOGI("UART RECEIVER", "Sent %zu bytes to the TCP queue: %.20s...", size, item.buffer);
         }
     }
 }
