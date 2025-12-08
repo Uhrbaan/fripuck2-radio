@@ -5,5 +5,6 @@
 extern const char wifi_ssid[];
 extern const char wifi_password[];
 extern const int tcp_port;
+extern const int udp_port;
 
 #endif

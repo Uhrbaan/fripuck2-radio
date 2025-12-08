@@ -104,4 +104,9 @@ void spi_transmitter(void *pvParameters) {
     }
 }
 
+/**
+ * @brief Gets data from the master and sends it over UDP
+ *
+ * @param pvParameters
+ */
 void spi_receiver(void *pvParameters) {}

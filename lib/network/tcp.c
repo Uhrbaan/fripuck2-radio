@@ -1,5 +1,6 @@
 #include "tcp.h"
 #include "network_config.h"
+#include "udp.h"
 
 #include "esp_log.h"
 #include <freertos/FreeRTOS.h>
@@ -10,6 +11,8 @@ QueueHandle_t tcp_transmit_queue;
 extern QueueHandle_t uart_request_queue; ///< Holds data sent from a remote client.
 
 EventGroupHandle_t tcp_event_group;
+
+struct sockaddr_storage client_address; // Large enough to store both IPv4 and IPv6
 
 void tcp_receiver(void *pvParameters) {
     const int socket = (int)pvParameters;
@@ -37,9 +40,7 @@ void tcp_receiver(void *pvParameters) {
     shutdown(socket, 0);
     close(socket);
 
-    // Stop both tasks since socket can't be used and must be reused.
-    vTaskDelete(xTaskGetHandle("tcp_receiver"));
-    vTaskDelete(xTaskGetHandle("tcp_transmitter"));
+    vTaskDelete(NULL);
 }
 
 void tcp_transmitter(void *pvParameters) {
@@ -74,9 +75,7 @@ void tcp_transmitter(void *pvParameters) {
     shutdown(socket, 0);
     close(socket);
 
-    // Stop both tasks since socket can't be used and must be reused.
-    vTaskDelete(xTaskGetHandle("tcp_receiver"));
-    vTaskDelete(xTaskGetHandle("tcp_transmitter"));
+    vTaskDelete(NULL);
 }
 
 int tcp_init_(void) {
@@ -97,23 +96,20 @@ void tcp_server(void *pvParameters) {
     // TODO: move initialization to a tcp_init function.
     char addr_str[128];
     int addr_family = (int)pvParameters;
-    int ip_protocol = 0;
 
-    struct sockaddr_storage dest_addr;
+    struct sockaddr_storage server_addr;
+    struct sockaddr_in *server_addr_ip4 = (struct sockaddr_in *)&server_addr;
+    server_addr_ip4->sin_addr.s_addr = htonl(INADDR_ANY);
+    server_addr_ip4->sin_family = AF_INET;
+    server_addr_ip4->sin_port = htons(tcp_port);
 
     if (addr_family != AF_INET) {
         ESP_LOGE("tcp_server", "Currently, only IPv4 is supported.");
         return;
     }
 
-    struct sockaddr_in *dest_addr_ip4 = (struct sockaddr_in *)&dest_addr;
-    dest_addr_ip4->sin_addr.s_addr = htonl(INADDR_ANY);
-    dest_addr_ip4->sin_family = AF_INET;
-    dest_addr_ip4->sin_port = htons(tcp_port);
-    ip_protocol = IPPROTO_IP;
-
     // Create listening socket
-    int listen_sock = socket(addr_family, SOCK_STREAM, ip_protocol);
+    int listen_sock = socket(addr_family, SOCK_STREAM, IPPROTO_IP);
     if (listen_sock < 0) {
         ESP_LOGE("TCP SERVER", "Unable to create socket: errno %d", errno);
         vTaskDelete(NULL);
@@ -124,7 +120,7 @@ void tcp_server(void *pvParameters) {
 
     ESP_LOGI("TCP SERVER", "Created tcp socket.");
 
-    int err = bind(listen_sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+    int err = bind(listen_sock, (struct sockaddr *)&server_addr, sizeof(server_addr));
     if (err != 0) {
         ESP_LOGE("TCP SERVER", "Socket unable to bind: errno %d", errno);
         ESP_LOGE("TCP SERVER", "IPPROTO: %d", addr_family);
@@ -141,23 +137,26 @@ void tcp_server(void *pvParameters) {
     }
 
     while (1) {
-        struct sockaddr_storage source_addr; // Large enough for both IPv4 or IPv6
-        socklen_t addr_len = sizeof(source_addr);
-        int sock = accept(listen_sock, (struct sockaddr *)&source_addr, &addr_len);
+        socklen_t addr_len = sizeof(client_address);
+        int sock = accept(listen_sock, (struct sockaddr *)&client_address, &addr_len);
         if (sock < 0) {
             ESP_LOGE("TCP SERVER", "Unable to accept connection: errno %d", errno);
             break;
         }
 
-        if (source_addr.ss_family == PF_INET) {
-            inet_ntoa_r(((struct sockaddr_in *)&source_addr)->sin_addr, addr_str, sizeof(addr_str) - 1);
+        if (client_address.ss_family == PF_INET) {
+            inet_ntoa_r(((struct sockaddr_in *)&client_address)->sin_addr, addr_str, sizeof(addr_str) - 1);
         }
 
         ESP_LOGI("TCP SERVER", "Socket accepted ip address: %s", addr_str);
 
-        // Main loop
         xTaskCreate(tcp_receiver, "tcp_receiver", 4096, (void *)sock, 5, NULL);
         xTaskCreate(tcp_transmitter, "tcp_transmitter", 4096, (void *)sock, 5, NULL);
+
+        struct sockaddr_storage *client_address_copy = malloc(sizeof(struct sockaddr_storage));
+        memcpy(client_address_copy, &client_address, sizeof(struct sockaddr_storage));
+        // ownership of the heap allocated copy is given to the task
+        xTaskCreate(udp_transmitter, "udp_transmitter", 4096, (void *)client_address_copy, 5, NULL);
     }
 
     close(listen_sock);

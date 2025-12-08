@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define TCP_CLIENT_CONNECTED_BIT (1 << 0)
+
 typedef struct request_queue_item {
     size_t size;
     uint8_t buffer[512];
